@@ -108,6 +108,9 @@ function update({ config, stdout }) {
 
   const functionsDefs = fs
     .readdirSync(path.join(process.cwd(), './functions'))
+    .filter((value) => {
+      return value.substring(0, 1) != ".";
+    })
     .map((folder) => {
       try {
         const functionDef = require(path.join(process.cwd(), `./functions/${folder}/function.json`));
