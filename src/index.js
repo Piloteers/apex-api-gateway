@@ -9,31 +9,43 @@ const AWS = require('aws-sdk');
 const apigateway = new AWS.APIGateway();
 
 const args = yargs
-              .usage('Usage: $0 <command> [options]')
-              .alias('c', 'config')
-              .nargs('c', 1)
-              .describe('c', 'Apex project JSON file location')
-              .command('create <name> [description] [cloneFrom]', 'Create a new REST API on AWS API Gateway', {
-                force: { alias: 'f', describe: 'Force creating REST API overriding existing configuration' }
-              }, create)
-              .command('update', 'Update the REST API with the new Swagger definitions', {
-                stdout: { describe: 'Output swagger to console without deploying' },
-              }, update)
-              .help()
-              .argv;
+  .usage('Usage: $0 <command> [options]')
+  .alias('c', 'config')
+  .nargs('c', 1)
+  .describe('c', 'Apex project JSON file location')
+  .command('create <name> [description] [cloneFrom]', 'Create a new REST API on AWS API Gateway', {
+    force: {
+      alias: 'f',
+      describe: 'Force creating REST API overriding existing configuration'
+    }
+  }, create)
+  .command('update', 'Update the REST API with the new Swagger definitions', {
+    stdout: {
+      describe: 'Output swagger to console without deploying'
+    }
+  }, update)
+  .help()
+  .argv;
 
-function create({ name, description = null, cloneFrom = '', config = './project.json', force }) {
+function create({
+  name,
+  description = null,
+  cloneFrom = '',
+  config = './project.json',
+  force
+}) {
   const projectConfig = loadConfig(config);
 
-  if(!force && projectConfig && projectConfig['x-api-gateway'] && projectConfig['x-api-gateway']['rest-api-id']) {
-    console.error('A REST API id is already defined the project.json, if you really want to override this use -f parameter');
+  if (!force && projectConfig && projectConfig['x-api-gateway'] && projectConfig['x-api-gateway']['rest-api-id']) {
+    console.error('A REST API id is already defined the project.json, if you really want to overrid' +
+        'e this use -f parameter');
     return;
   }
 
   var params = {
     name,
     cloneFrom,
-    description,
+    description
   };
   apigateway.createRestApi(params, (err, data) => {
     if (err) {
@@ -41,55 +53,61 @@ function create({ name, description = null, cloneFrom = '', config = './project.
       return;
     }
 
-    const updatedConfig = JSON.stringify(
-      Object.assign({}, projectConfig, {
-        ['x-api-gateway']: Object.assign({}, projectConfig['x-api-gateway'], {'rest-api-id': data.id})
-      }),
-      null,
-      2
-    );
+    const updatedConfig = JSON.stringify(Object.assign({}, projectConfig, {
+      ['x-api-gateway']: Object.assign({}, projectConfig['x-api-gateway'], {'rest-api-id': data.id})
+    }), null, 2);
 
     fs.writeFile(config, updatedConfig, (err) => {
-      if (err) throw err;
-
+      if (err) 
+        throw err;
+      
       console.log('Success! Now you can push your REST API using update command.');
     });
   });
 }
 
-function update({ config, stdout }) {
+function update({config, stdout}) {
   const projectConfig = loadConfig(config);
 
-  if(!projectConfig['x-api-gateway'] || !projectConfig['x-api-gateway']['rest-api-id']) {
+  if (!projectConfig['x-api-gateway'] || !projectConfig['x-api-gateway']['rest-api-id']) {
     throw new Error('Missing REST API id, you might want to use create command first.');
   }
 
   const restApiId = projectConfig['x-api-gateway']['rest-api-id'];
 
-  const renderMethod = (name, { description, ['x-api-gateway']: { parameters } }) => {
+  const renderMethod = (name, {description, ['x-api-gateway']: {
+      parameters
+    }}) => {
     const template = projectConfig['x-api-gateway']['swagger-func-template'];
-    return defaultsDeep(
-      {
-        description,
-        ['x-amazon-apigateway-integration']: {
-          httpMethod: 'post',
-          uri: template['x-amazon-apigateway-integration'].uri.replace('{{functionName}}', `${projectConfig.name}_${name}`),
-        },
-        parameters,
+    return defaultsDeep({
+      description,
+      ['x-amazon-apigateway-integration']: {
+        httpMethod: 'post',
+        uri: template['x-amazon-apigateway-integration']
+          .uri
+          .replace('{{functionName}}', `${projectConfig.name}_${name}`)
       },
-      template
-    );
+      parameters
+    }, template);
   };
 
   const renderPaths = (functions) => {
     const paths = {};
 
-    functions.map(({ name, definition }) => {
-      const { path, method } = definition['x-api-gateway'];
-      if(!path || !method) {
+    functions.map(({name, definition}) => {
+      const xapigateway = definition['x-api-gateway'];
+
+      if (!xapigateway) {
+        console.log("Skipping non-API function ", name);
         return;
       }
 
+      const {path, method} = xapigateway;
+      if (!path || !method) {
+        return;
+      }
+
+      console.log("Adding API function ", name);
       paths[path] = paths[path] || {};
       paths[path][method] = renderMethod(name, definition);
     });
@@ -106,32 +124,26 @@ function update({ config, stdout }) {
     return paths;
   };
 
-  const functionsDefs = fs
-    .readdirSync(path.join(process.cwd(), './functions'))
-    .filter((value) => {
-      return value.substring(0, 1) != ".";
-    })
-    .map((folder) => {
-      try {
-        const functionDef = require(path.join(process.cwd(), `./functions/${folder}/function.json`));
+  const functionsDefs = fs.readdirSync(path.join(process.cwd(), './functions')).filter((value) => {
+    return value.substring(0, 1) != ".";
+  }).map((folder) => {
+    try {
+      const functionDef = require(path.join(process.cwd(), `./functions/${folder}/function.json`));
 
-        return {
-          name: folder,
-          definition: functionDef,
-        };
-      } catch(e) { return; }
-    });
+      return {name: folder, definition: functionDef};
+    } catch (e) {
+      return;
+    }
+  });
 
   const swagger = {
     "swagger": "2.0",
     "info": {
       "version": (new Date()).toISOString(),
-      "title": projectConfig.name,
+      "title": projectConfig.name
     },
     "basePath": projectConfig['x-api-gateway'].base_path,
-    "schemes": [
-      "https"
-    ],
+    "schemes": ["https"],
     "paths": renderPaths(functionsDefs),
     "securityDefinitions": {
       "api_key": {
@@ -147,8 +159,10 @@ function update({ config, stdout }) {
     }
   };
 
-  if(stdout) {
-    process.stdout.write(JSON.stringify(swagger, null, 2));
+  if (stdout) {
+    process
+      .stdout
+      .write(JSON.stringify(swagger, null, 2));
     return;
   }
 
@@ -157,7 +171,7 @@ function update({ config, stdout }) {
   const params = {
     body: JSON.stringify(swagger),
     restApiId,
-    mode: 'overwrite',
+    mode: 'overwrite'
   };
   apigateway.putRestApi(params, (err, data) => {
     if (err) {
@@ -170,7 +184,7 @@ function update({ config, stdout }) {
 
     const params = {
       restApiId,
-      stageName: projectConfig['x-api-gateway']['stage_name'],
+      stageName: projectConfig['x-api-gateway']['stage_name']
     };
     apigateway.createDeployment(params, (err, data) => {
       if (err) {
