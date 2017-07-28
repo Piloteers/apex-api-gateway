@@ -179,7 +179,7 @@ function update({config, stdout}) {
       return;
     }
 
-    console.log('Updated API with success!');
+    console.log('Updated API successfully.');
     console.log('Deploying REST API...');
 
     const params = {
