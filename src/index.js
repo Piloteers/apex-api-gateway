@@ -58,9 +58,9 @@ function create({
     }), null, 2);
 
     fs.writeFile(config, updatedConfig, (err) => {
-      if (err) 
+      if (err)
         throw err;
-      
+
       console.log('Success! Now you can push your REST API using update command.');
     });
   });
@@ -145,18 +145,9 @@ function update({config, stdout}) {
     "basePath": projectConfig['x-api-gateway'].base_path,
     "schemes": ["https"],
     "paths": renderPaths(functionsDefs),
-    "securityDefinitions": {
-      "api_key": {
-        "type": "apiKey",
-        "name": "x-api-key",
-        "in": "header"
-      }
-    },
-    "definitions": {
-      "Empty": {
-        "type": "object"
-      }
-    }
+    "securityDefinitions": projectConfig['x-api-gateway'].securityDefinitions,
+    "definitions": projectConfig['x-api-gateway'].definitions,
+    "x-amazon-apigateway-request-validator": projectConfig['x-api-gateway']['x-amazon-apigateway-request-validator']
   };
 
   if (stdout) {
